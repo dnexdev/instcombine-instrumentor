@@ -513,6 +513,59 @@ def _collect_returns_for_wrap(content: bytes, body: Node) -> list[Node]:
         result.append(expr_node)
     return result
 
+# replaces I.replaceAllUsesWith(I2) with I.replaceAllUsesWith(__llvm_fuzz_record(I2))
+def patch_replace_all_uses_with(content: bytes, root: Node) -> list[tuple[int, int, bytes]]:
+    q = Query(CPP, '''
+    (call_expression
+	function: (field_expression
+            field: (field_identifier) @methodName
+            (#eq? @methodName "replaceAllUsesWith")
+        )
+        arguments: (argument_list (_) @methodArg)
+    )
+    ''')
+    edits: list[tuple[int, int, bytes]] = []
+    captures = q.captures(root)
+    if not captures:
+        return []
+    # print(captures)
+    for capture in captures["methodArg"]:
+        expr_text = content[capture.start_byte : capture.end_byte]
+        if b"__llvm_fuzz_record" in expr_text:
+            continue
+        edits.append(
+            (capture.start_byte, capture.end_byte, b"__llvm_fuzz_record(" + expr_text + b")")
+        )
+
+    return edits
+
+def patch_aggressive_instcombine_entry(content: bytes, root: Node) -> list[tuple[int, int, bytes]]:
+    q = Query(CPP, '''
+        (function_definition
+            declarator: (function_declarator
+                declarator: (qualified_identifier) @id
+                (#eq? @id "AggressiveInstCombinePass::run")
+            )
+            body: (compound_statement
+                . (_) @first_stmt
+                (return_statement) @last_return .
+            )
+        ) @fdef
+    ''')
+    captures = q.captures(root)
+    if not captures:
+        return []
+
+    fdef = captures["fdef"][0]
+    if b"llvm_fuzz::start_iteration" in content[fdef.start_byte : fdef.end_byte]:
+        return []
+
+    first_stmt = captures["first_stmt"][0]
+    last_return = captures["last_return"][0]
+    return [
+        (first_stmt.start_byte, first_stmt.start_byte, b"llvm_fuzz::start_iteration();"),
+        (last_return.start_byte, last_return.start_byte, b"llvm_fuzz::dump_iteration_info();")
+    ]
 
 def _patch_file_generic(
     file_path: Path,
@@ -601,6 +654,12 @@ def _patch_file_generic(
                         )
                         changed = True
 
+    if more_edits := patch_replace_all_uses_with(content, root):
+        edits.extend(more_edits)
+        changed = True
+    if more_edits := patch_aggressive_instcombine_entry(content, root):
+        edits.extend(more_edits)
+        changed = True
     if not changed:
         return
 
@@ -685,6 +744,12 @@ def _collect_instrumented_names(llvm_repo: Path) -> set[bytes]:
             if entry.suffix in (".cpp", ".h") and entry.is_file():
                 targets.append(entry)
 
+    aggressive_inst_combine_dir = llvm_repo / "llvm/lib/Transforms/AggressiveInstCombine"
+    if aggressive_inst_combine_dir.is_dir():
+        for entry in sorted(aggressive_inst_combine_dir.iterdir()):
+            if entry.suffix in (".cpp", ".h") and entry.is_file():
+                targets.append(entry)
+
     inst_simplify = llvm_repo / "llvm/lib/Analysis/InstructionSimplify.cpp"
     if inst_simplify.is_file():
         targets.append(inst_simplify)
@@ -734,6 +799,13 @@ def patch_llvm(llvm_repo: Path) -> None:
         for entry in sorted(inst_combine_dir.iterdir()):
             if entry.suffix in (".cpp", ".h") and entry.is_file():
                 tasks.append(("INST_COMBINE", entry))
+    
+    aggressive_inst_combine_dir = llvm_repo / "llvm/lib/Transforms/AggressiveInstCombine"
+    if aggressive_inst_combine_dir.is_dir():
+        for entry in sorted(aggressive_inst_combine_dir.iterdir()):
+            if entry.suffix in (".cpp", ".h") and entry.is_file():
+                tasks.append(("INST_COMBINE", entry))
+    
 
     inst_simplify = llvm_repo / "llvm/lib/Analysis/InstructionSimplify.cpp"
     tasks.append(("INST_SIMPLIFY", inst_simplify))
