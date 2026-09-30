@@ -32,6 +32,11 @@ POINTER_TYPE_HINTS = (
     b"SelectInst",
 )
 
+# ConstantFolding returns `Constant *` / `ConstantFP *`, which don't contain
+# the Value/Instruction hints above. `std::pair<Constant *, Constant *>`
+# (ConstantFoldScalarFrexpCall) is not a pointer_declarator, so it stays unwrapped.
+CONSTANT_POINTER_HINTS = (b"Constant",)
+
 # IRBuilder methods that produce new Values. Allowlisted by pattern so we don't
 # have to enumerate dozens of CreateAdd/CreateSub/CreateICmp/... variants.
 CREATE_PATTERN = re.compile(rb"^Create[A-Z]")
@@ -718,13 +723,6 @@ def patch_instruction_simplify_file(
         instrumented_names,
         is_inst_combining_cpp=False,
     )
-
-
-# ConstantFolding returns `Constant *` / `ConstantFP *`. Those names don't
-# contain the Value/Instruction hints, so this file needs its own hint.
-# `std::pair<Constant *, Constant *>` (ConstantFoldScalarFrexpCall) is not a
-# pointer_declarator, so the unified matcher leaves it unwrapped.
-CONSTANT_POINTER_HINTS = (b"Constant",)
 
 
 def patch_constant_folding_file(
