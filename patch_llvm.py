@@ -116,6 +116,14 @@ def is_inside_nested_scope(node: Node, root: Node) -> bool:
 def apply_edits(content: bytes, edits: list[tuple[int, int, bytes]]) -> bytes:
     """Apply (start_byte, end_byte, replacement) edits non-overlappingly in reverse."""
     edits_sorted = sorted(edits, key=lambda e: e[0], reverse=True)
+    last_edit = (10000000000, 10000000000, "bogus")
+    for edit in edits_sorted:
+        # source text: hello, world!
+        # last_edit:          -----
+        # edit:           ------
+        if edit[1] >= last_edit[0]:
+            raise RuntimeError(f"overlapping edits detected: last_edit={last_edit}, edit={edit}")
+        last_edit = edit
     out = content
     for start, end, text in edits_sorted:
         out = out[:start] + text + out[end:]
@@ -517,11 +525,11 @@ def _collect_returns_for_wrap(content: bytes, body: Node) -> list[Node]:
 def patch_replace_all_uses_with(content: bytes, root: Node) -> list[tuple[int, int, bytes]]:
     q = Query(CPP, '''
     (call_expression
-	function: (field_expression
+	    function: (field_expression
             field: (field_identifier) @methodName
             (#eq? @methodName "replaceAllUsesWith")
         )
-        arguments: (argument_list (_) @methodArg)
+        arguments: (argument_list) @args
     )
     ''')
     edits: list[tuple[int, int, bytes]] = []
@@ -529,12 +537,13 @@ def patch_replace_all_uses_with(content: bytes, root: Node) -> list[tuple[int, i
     if not captures:
         return []
     # print(captures)
-    for capture in captures["methodArg"]:
-        expr_text = content[capture.start_byte : capture.end_byte]
+    for capture in captures["args"]:
+        expr_text = content[capture.start_byte + 1 : capture.end_byte]
+        print("hi, ", expr_text)
         if b"__llvm_fuzz_record" in expr_text:
             continue
         edits.append(
-            (capture.start_byte, capture.end_byte, b"__llvm_fuzz_record(" + expr_text + b")")
+            (capture.start_byte + 1, capture.end_byte, b"__llvm_fuzz_record(" + expr_text + b")")
         )
 
     return edits
