@@ -112,16 +112,35 @@ def is_inside_nested_scope(node: Node, root: Node) -> bool:
         current = current.parent
     return False
 
+def map_edits(content: bytes, edits: list[tuple[int, int, bytes]]) -> list[tuple[int, int, bytes]]:
+    """
+    if an edit wraps content around inserted content, we turn them into two edits (one inserting at the front and one inserting at back).
+    this is important, as it helps avoid overlapping edits.
+    """
+    def map_edits_inner():
+        for start, end, newText in edits:
+            if start < end and len(pieces := newText.split(content[start:end], maxsplit=2)) == 2:
+                yield (start, start, pieces[0])
+                yield (end, end, pieces[1])
+            else:
+                yield (start, end, newText)
+    
+    return list(map_edits_inner())
+
 
 def apply_edits(content: bytes, edits: list[tuple[int, int, bytes]]) -> bytes:
     """Apply (start_byte, end_byte, replacement) edits non-overlappingly in reverse."""
+    edits = map_edits(content, edits)
     edits_sorted = sorted(edits, key=lambda e: e[0], reverse=True)
     last_edit = (10000000000, 10000000000, "bogus")
     for edit in edits_sorted:
+        current_edit_insertion = edit[0] == edit[1]
+        last_edit_insertion = last_edit[0] == last_edit[1]
         # source text: hello, world!
         # last_edit:          -----
         # edit:           ------
-        if edit[1] >= last_edit[0]:
+        # If both edits insert text at the same place (not deleting any source text), we allow that to overlap
+        if edit[1] >= last_edit[0] and not (current_edit_insertion and last_edit_insertion):
             raise RuntimeError(f"overlapping edits detected: last_edit={last_edit}, edit={edit}")
         last_edit = edit
     out = content
@@ -536,10 +555,8 @@ def patch_replace_all_uses_with(content: bytes, root: Node) -> list[tuple[int, i
     captures = q.captures(root)
     if not captures:
         return []
-    # print(captures)
     for capture in captures["args"]:
         expr_text = content[capture.start_byte + 1 : capture.end_byte]
-        print("hi, ", expr_text)
         if b"__llvm_fuzz_record" in expr_text:
             continue
         edits.append(
