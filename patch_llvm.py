@@ -30,12 +30,12 @@ POINTER_TYPE_HINTS = (
     b"CmpInst",
     b"PHINode",
     b"SelectInst",
+    # ConstantFolding (plus a handful of InstCombine/InstructionSimplify helpers)
+    # returns `Constant *` / `ConstantInt *` / `ConstantFP *`.
+    # `std::pair<Constant *, Constant *>` (ConstantFoldScalarFrexpCall) is not a
+    # pointer_declarator, so it stays unwrapped.
+    b"Constant",
 )
-
-# ConstantFolding returns `Constant *` / `ConstantFP *`, which don't contain
-# the Value/Instruction hints above. `std::pair<Constant *, Constant *>`
-# (ConstantFoldScalarFrexpCall) is not a pointer_declarator, so it stays unwrapped.
-CONSTANT_POINTER_HINTS = (b"Constant",)
 
 # IRBuilder methods that produce new Values. Allowlisted by pattern so we don't
 # have to enumerate dozens of CreateAdd/CreateSub/CreateICmp/... variants.
@@ -267,9 +267,8 @@ def patch_path_inc_for_older_llvm(llvm_repo: Path, llvm_version_major: int) -> N
 def _is_pointer_return(
     prefix_text: bytes,
     declarator: Node,
-    extra_hints: tuple[bytes, ...] = (),
+    hints: tuple[bytes, ...] = POINTER_TYPE_HINTS,
 ) -> bool:
-    hints = POINTER_TYPE_HINTS + extra_hints
     type_match = any(hint in prefix_text for hint in hints)
     if not type_match:
         return False
@@ -608,7 +607,7 @@ def _patch_file_generic(
     instrumented_names: set[bytes],
     *,
     is_inst_combining_cpp: bool,
-    extra_hints: tuple[bytes, ...] = (),
+    hints: tuple[bytes, ...] = POINTER_TYPE_HINTS,
 ) -> None:
     print(f"Patching {file_path}...")
     content = file_path.read_bytes()
@@ -635,7 +634,7 @@ def _patch_file_generic(
 
         prefix_text = content[func_node.start_byte : declarator.start_byte]
         is_pointer = _is_pointer_return(
-            prefix_text, declarator, extra_hints=extra_hints
+            prefix_text, declarator, hints=hints
         )
 
         # Call wraps apply in every body (so calls from utility/void/bool functions
@@ -732,7 +731,6 @@ def patch_constant_folding_file(
         file_path,
         instrumented_names,
         is_inst_combining_cpp=False,
-        extra_hints=CONSTANT_POINTER_HINTS,
     )
 
 
@@ -786,14 +784,13 @@ def _collect_instrumented_names(llvm_repo: Path) -> set[bytes]:
     functions matching `_is_pointer_return`. These become the call-site
     allowlist (alongside the ^Create[A-Z] regex)."""
     names: set[bytes] = set()
-    # (path, extra pointer-type hints)
-    targets: list[tuple[Path, tuple[bytes, ...]]] = []
+    targets: list[Path] = []
 
     inst_combine_dir = llvm_repo / "llvm/lib/Transforms/InstCombine"
     if inst_combine_dir.is_dir():
         for entry in sorted(inst_combine_dir.iterdir()):
             if entry.suffix in (".cpp", ".h") and entry.is_file():
-                targets.append((entry, ()))
+                targets.append(entry)
 
     aggressive_inst_combine_targets = []
     aggressive_inst_combine_dir = llvm_repo / "llvm/lib/Transforms/AggressiveInstCombine"
@@ -804,13 +801,13 @@ def _collect_instrumented_names(llvm_repo: Path) -> set[bytes]:
 
     inst_simplify = llvm_repo / "llvm/lib/Analysis/InstructionSimplify.cpp"
     if inst_simplify.is_file():
-        targets.append((inst_simplify, ()))
+        targets.append(inst_simplify)
 
     const_fold = llvm_repo / "llvm/lib/Analysis/ConstantFolding.cpp"
     if const_fold.is_file():
-        targets.append((const_fold, CONSTANT_POINTER_HINTS))
+        targets.append(const_fold)
 
-    for file_path, extra_hints in targets:
+    for file_path in targets:
         content = file_path.read_bytes()
         root = parse_bytes(content)
         processed: set[int] = set()
@@ -826,7 +823,7 @@ def _collect_instrumented_names(llvm_repo: Path) -> set[bytes]:
             if declarator is None:
                 continue
             prefix_text = content[func_node.start_byte : declarator.start_byte]
-            if _is_pointer_return(prefix_text, declarator, extra_hints=extra_hints):
+            if _is_pointer_return(prefix_text, declarator):
                 name = get_function_name(func_node)
                 if name:
                     names.add(name)

@@ -26,7 +26,7 @@ At runtime, `DISABLE_INSTCOMBINE_TRACE=1` makes the patched `opt` behave like st
 
 `patch_llvm.py` uses tree-sitter (not regex/sed) to walk C++ function definitions. Patching runs in **two passes**:
 
-1. **First pass (`_collect_instrumented_names`)** scans every `.cpp`/`.h` under `llvm/lib/Transforms/InstCombine/` plus `llvm/lib/Analysis/InstructionSimplify.cpp` and `llvm/lib/Analysis/ConstantFolding.cpp`, and collects the bare names of every function whose return type "looks like a pointer to a Value/Instruction subclass" (see `POINTER_TYPE_HINTS` and `_is_pointer_return`). ConstantFolding is scanned with an extra `Constant` hint, because its helpers return `Constant *` / `ConstantFP *`. This name set is the **call-site allowlist** used by the second pass.
+1. **First pass (`_collect_instrumented_names`)** scans every `.cpp`/`.h` under `llvm/lib/Transforms/InstCombine/` plus `llvm/lib/Analysis/InstructionSimplify.cpp` and `llvm/lib/Analysis/ConstantFolding.cpp`, and collects the bare names of every function whose return type "looks like a pointer to a Value/Instruction/Constant subclass" (see `POINTER_TYPE_HINTS` and `_is_pointer_return`). This name set is the **call-site allowlist** used by the second pass.
 
 2. **Second pass** applies four distinct patchers to specific files in `thirdparty/llvm-project`:
 
@@ -36,7 +36,7 @@ At runtime, `DISABLE_INSTCOMBINE_TRACE=1` makes the patched `opt` behave like st
 
    3. **`patch_instruction_simplify_file`** → `llvm/lib/Analysis/InstructionSimplify.cpp`. Same as #2, wrapping allowlisted calls and pointer returns (without the `InstructionCombining.cpp`-specific `run` method instrumentation).
 
-   4. **`patch_constant_folding_file`** → `llvm/lib/Analysis/ConstantFolding.cpp`. Same call-site and return wraps as #2, plus an extra `Constant` hint so `Constant *` / `ConstantFP *` returns are recorded. `std::pair<Constant *, Constant *>` (`ConstantFoldScalarFrexpCall`) is not a pointer declarator, so it stays unwrapped. The header is declarations only, so call sites in InstCombine are covered by the allowlist rather than by patching the header.
+   4. **`patch_constant_folding_file`** → `llvm/lib/Analysis/ConstantFolding.cpp`. Same call-site and return wraps as #3. `POINTER_TYPE_HINTS` includes `Constant` so `Constant *` / `ConstantFP *` returns are recorded (`std::pair<Constant *, Constant *>` in `ConstantFoldScalarFrexpCall` is not a pointer declarator, so it stays unwrapped). The header is declarations only, so call sites in InstCombine are covered by the allowlist rather than by patching the header.
 
 Why two passes: call-site wraps need to know *which* callees are themselves instrumented, so the allowlist must be built before any source mutation.
 

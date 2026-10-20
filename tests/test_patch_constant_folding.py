@@ -99,6 +99,20 @@ class ConstantFoldingPatchTest(unittest.TestCase):
             p.patch_constant_folding_file(cf, names)
             self.assertEqual(once, cf.read_bytes())
 
+    def test_custom_hints_override(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cf = Path(tmp) / "ConstantFolding.cpp"
+            cf.write_text(CONSTANT_FOLDING)
+
+            # Passing `hints=(b"Instruction",)` blocks `Constant *` return wrapping.
+            p._patch_file_generic(
+                cf,
+                set(),
+                is_inst_combining_cpp=False,
+                hints=(b"Instruction",),
+            )
+            self.assertNotIn("__llvm_fuzz_record", cf.read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

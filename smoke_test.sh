@@ -11,6 +11,13 @@ define i32 @f(i32 %x) {
   %a = add i32 %x, 0
   ret i32 %a
 }
+
+define float @trigger(float %x) {
+entry:
+  %mul = fmul float %x, 2.000000e+00
+  %add = fadd reassoc nsz float %mul, %x
+  ret float %add
+}
 EOF
 
 rm -f "$TRACE_FILE" "$TRACE_JSON"
@@ -35,6 +42,12 @@ fi
 # (e.g. InstCombinerImpl::visitAdd) for the trivial `add %x, 0` smoke input.
 if ! grep -q "visitAdd" "$TRACE_FILE"; then
     echo "FAIL: instrumentation trace has no visitAdd frame"
+    cat "$TRACE_FILE"
+    exit 1
+fi
+# ConstantFolding instrumentation must record the folded constant for @trigger.
+if ! grep -q "ConstantFoldBinaryOpOperands" "$TRACE_FILE"; then
+    echo "FAIL: instrumentation trace has no ConstantFoldBinaryOpOperands record"
     cat "$TRACE_FILE"
     exit 1
 fi
