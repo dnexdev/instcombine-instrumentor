@@ -15,4 +15,4 @@ define i32 @popcount32(i32 %x) {
     ret i32 %res
 }
 
-; %0 = call i32 @llvm.ctpop.i32(i32 %x):tryToRecognizePopCount,AggressiveInstCombine.cpp
+; %0 = call i32 @llvm.ctpop.i32(i32 %x):tryToRecognizePopCount,foldUnusualPatterns,runImpl,AggressiveInstCombine.cpp
