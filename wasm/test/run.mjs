@@ -126,13 +126,14 @@ readdirSync(resolve(__dirname, "input")).forEach((f) => {
         }
     });
 
+    const norm = mapJsonL(traceJson, (line) => { return replaceLineNumWithLineStr(line); });
+
     if (Object.keys(expected).length === 0) {
         console.error("FAIL: no expected tags found in input IR");
-        console.log(mapJsonL(traceJson, (l) => l, 2));
+        console.log(mapJsonL(norm, (l) => l, 2));
         process.exit(1);
     }
 
-    const norm = mapJsonL(traceJson, (line) => { return replaceLineNumWithLineStr(line); });
     const errs = mapJsonL(norm, (line) => {
         let res = [];
         for (const k in line.new_values) {
