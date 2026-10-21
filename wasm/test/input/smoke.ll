@@ -3,4 +3,4 @@ define i32 @f(i32 %x) {
   ret i32 %a
 }
 
-; i32 %x:simplifyAddInst,InstructionSimplify.cpp
+; i32 %x:simplifyAddInst,visitAdd(BinaryOperator &),InstructionSimplify.cpp

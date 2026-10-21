@@ -66,32 +66,7 @@ function runOnce(ir) {
     return { trace, traceJson, outputIr };
 }
 
-function normalizePtr(obj) {
-    let ptrMap = {};
-
-    function mapPtr(ptr) {
-        if (ptr === 0) return 0;
-        if (ptrMap[ptr] === undefined) {
-            ptrMap[ptr] = Object.keys(ptrMap).length + 1;
-        }
-        return ptrMap[ptr];
-    }
-
-    for (const key in obj.new_values) {
-        const v = obj.new_values[key];
-        v.ptr = mapPtr(v.ptr);
-    }
-
-    for (const key in obj.replacements) {
-        const v = obj.replacements[key];
-        v.old_ptr = mapPtr(v.old_ptr);
-        v.new_ptr = mapPtr(v.new_ptr);
-    }
-
-    return obj;
-}
-
-function normalizeLineNum(obj) {
+function replaceLineNumWithLineStr(obj) {
     for (const key in obj.new_values) {
         const v = obj.new_values[key];
         for (const frame of v.frames) {
@@ -108,7 +83,7 @@ function normalizeLineNum(obj) {
     return obj;
 }
 
-function foreachJson(jsonl, f, indent = 0) {
+function mapJsonL(jsonl, f, indent = 0) {
     return jsonl.split("\n").filter((line) => line.trim() !== "").map((line) => {
         try {
             let obj = JSON.parse(line);
@@ -153,12 +128,12 @@ readdirSync(resolve(__dirname, "input")).forEach((f) => {
 
     if (Object.keys(expected).length === 0) {
         console.error("FAIL: no expected tags found in input IR");
-        console.log(foreachJson(traceJson, (l) => l, 2));
+        console.log(mapJsonL(traceJson, (l) => l, 2));
         process.exit(1);
     }
 
-    const norm = foreachJson(traceJson, (line) => { return normalizeLineNum(normalizePtr(line)); });
-    const errs = foreachJson(norm, (line) => {
+    const norm = mapJsonL(traceJson, (line) => { return replaceLineNumWithLineStr(line); });
+    const errs = mapJsonL(norm, (line) => {
         let res = [];
         for (const k in line.new_values) {
             const v = line.new_values[k];
@@ -180,7 +155,7 @@ readdirSync(resolve(__dirname, "input")).forEach((f) => {
         return res;
     });
 
-    foreachJson(errs, (line) => {
+    mapJsonL(errs, (line) => {
         for (const v of line) {
             if (v.err) {
                 console.error(v.err);
