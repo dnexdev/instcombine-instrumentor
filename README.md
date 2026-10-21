@@ -57,7 +57,7 @@ source ./thirdparty/emsdk/emsdk_env.sh
 bash clone_llvm.sh
 uv run python patch_llvm.py --llvm-repo thirdparty/llvm-project
 bash build_wasm.sh                # ~10-30 min cold; rebuilds host tblgen incrementally
-node wasm/test/smoke_wasm.mjs     # smoke
+node wasm/test/run.mjs            # test
 ```
 
 ### Serve the Website

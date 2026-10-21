@@ -112,7 +112,7 @@ jobs:
         run: ccache -s -v || ccache -s || true
 
       - name: Smoke test wasm
-        run: node wasm/test/smoke_wasm.mjs
+        run: node wasm/test/run.mjs
 
       - name: Upload wasm artifact
         uses: actions/upload-artifact@v4

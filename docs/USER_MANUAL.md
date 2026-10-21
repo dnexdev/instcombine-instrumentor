@@ -209,7 +209,7 @@ Inputs:
 
 #### 12.1 `wasm-verify.yml`
 
-Push/PR (paths gated to wasm-relevant files) and `workflow_dispatch`. Builds the wasm bundle and runs `wasm/test/smoke_wasm.mjs`, then uploads a 14-day workflow artifact `wasm-bundle-latest` so reviewers can preview a PR build locally. No publishing to `wasm-pkgs`, no Release attachment, no inputs.
+Push/PR (paths gated to wasm-relevant files) and `workflow_dispatch`. Builds the wasm bundle and runs `wasm/test/run.mjs`, then uploads a 14-day workflow artifact `wasm-bundle-latest` so reviewers can preview a PR build locally. No publishing to `wasm-pkgs`, no Release attachment, no inputs.
 
 #### 12.2 `wasm-publish.yml`
 
