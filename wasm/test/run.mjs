@@ -70,12 +70,12 @@ function replaceLineNumWithLineStr(obj) {
     for (const key in obj.new_values) {
         const v = obj.new_values[key];
         for (const frame of v.frames) {
-            let source = readFileSync(__dirname + "/" + frame.file, "utf8");
+            let source = readFileSync(resolve(__dirname, frame.file), "utf8");
             let line = source.split("\n")[frame.line - 1];
             frame.line = line.trim();
         }
         let parts = v.loc.split(":");
-        let source = readFileSync(__dirname + "/" + parts[0], "utf8");
+        let source = readFileSync(resolve(__dirname, parts[0]), "utf8");
         let line = source.split("\n")[Number(parts[1]) - 1];
         v.loc = line.trim();
     }
