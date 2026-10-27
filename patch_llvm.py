@@ -30,6 +30,11 @@ POINTER_TYPE_HINTS = (
     b"CmpInst",
     b"PHINode",
     b"SelectInst",
+    # ConstantFolding (plus a handful of InstCombine/InstructionSimplify helpers)
+    # returns `Constant *` / `ConstantInt *` / `ConstantFP *`.
+    # `std::pair<Constant *, Constant *>` (ConstantFoldScalarFrexpCall) is not a
+    # pointer_declarator, so it stays unwrapped.
+    b"Constant",
 )
 
 # IRBuilder methods that produce new Values. Allowlisted by pattern so we don't
@@ -259,8 +264,12 @@ def patch_path_inc_for_older_llvm(llvm_repo: Path, llvm_version_major: int) -> N
     path_inc.write_text(content)
 
 
-def _is_pointer_return(prefix_text: bytes, declarator: Node) -> bool:
-    type_match = any(hint in prefix_text for hint in POINTER_TYPE_HINTS)
+def _is_pointer_return(
+    prefix_text: bytes,
+    declarator: Node,
+    hints: tuple[bytes, ...] = POINTER_TYPE_HINTS,
+) -> bool:
+    type_match = any(hint in prefix_text for hint in hints)
     if not type_match:
         return False
     return declarator.type == "pointer_declarator"
@@ -598,6 +607,7 @@ def _patch_file_generic(
     instrumented_names: set[bytes],
     *,
     is_inst_combining_cpp: bool,
+    hints: tuple[bytes, ...] = POINTER_TYPE_HINTS,
 ) -> None:
     print(f"Patching {file_path}...")
     content = file_path.read_bytes()
@@ -623,7 +633,9 @@ def _patch_file_generic(
             continue
 
         prefix_text = content[func_node.start_byte : declarator.start_byte]
-        is_pointer = _is_pointer_return(prefix_text, declarator)
+        is_pointer = _is_pointer_return(
+            prefix_text, declarator, hints=hints
+        )
 
         # Call wraps apply in every body (so calls from utility/void/bool functions
         # still get attributed). Return wraps only in pointer-return functions.
@@ -712,6 +724,16 @@ def patch_instruction_simplify_file(
     )
 
 
+def patch_constant_folding_file(
+    file_path: Path, instrumented_names: set[bytes]
+) -> None:
+    _patch_file_generic(
+        file_path,
+        instrumented_names,
+        is_inst_combining_cpp=False,
+    )
+
+
 def update_core_cmake(file_path: Path) -> None:
     print(f"Updating {file_path}...")
     content = file_path.read_text()
@@ -781,6 +803,10 @@ def _collect_instrumented_names(llvm_repo: Path) -> set[bytes]:
     if inst_simplify.is_file():
         targets.append(inst_simplify)
 
+    const_fold = llvm_repo / "llvm/lib/Analysis/ConstantFolding.cpp"
+    if const_fold.is_file():
+        targets.append(const_fold)
+
     for file_path in targets:
         content = file_path.read_bytes()
         root = parse_bytes(content)
@@ -848,6 +874,10 @@ def patch_llvm(llvm_repo: Path) -> None:
     inst_simplify = llvm_repo / "llvm/lib/Analysis/InstructionSimplify.cpp"
     tasks.append(("INST_SIMPLIFY", inst_simplify))
 
+    const_fold = llvm_repo / "llvm/lib/Analysis/ConstantFolding.cpp"
+    if const_fold.is_file():
+        tasks.append(("CONST_FOLD", const_fold))
+
     print(f"Starting {len(tasks)} patching tasks sequentially...")
     for kind, file_path in tasks:
         if kind == "VALUE_CPP":
@@ -856,6 +886,8 @@ def patch_llvm(llvm_repo: Path) -> None:
             patch_inst_combine_file(file_path, instrumented_names)
         elif kind == "INST_SIMPLIFY":
             patch_instruction_simplify_file(file_path, instrumented_names)
+        elif kind == "CONST_FOLD":
+            patch_constant_folding_file(file_path, instrumented_names)
         else:
             raise RuntimeError(f"Unknown task type: {kind}")
 

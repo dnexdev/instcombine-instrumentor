@@ -5,8 +5,8 @@
 ![demo](demo.png)
 
 Build an instrumented LLVM `opt` that records every new instruction and every
-RAUW replacement performed by InstCombine / InstructionSimplify on each pass
-iteration.
+RAUW replacement performed by InstCombine / InstructionSimplify /
+ConstantFolding on each pass iteration.
 
 Ships in two flavors:
 
@@ -57,7 +57,7 @@ source ./thirdparty/emsdk/emsdk_env.sh
 bash clone_llvm.sh
 uv run python patch_llvm.py --llvm-repo thirdparty/llvm-project
 bash build_wasm.sh                # ~10-30 min cold; rebuilds host tblgen incrementally
-node wasm/test/smoke_wasm.mjs     # smoke
+node wasm/test/run.mjs            # test
 ```
 
 ### Serve the Website

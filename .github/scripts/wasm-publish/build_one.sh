@@ -34,7 +34,7 @@ printf '%s\n' "$LLVM_COMMIT" > llvm_commit.txt
 bash clone_llvm.sh
 uv run python patch_llvm.py --llvm-repo thirdparty/llvm-project
 bash .github/scripts/shared/retry.sh 3 1 -- bash build_wasm.sh
-node wasm/test/smoke_wasm.mjs
+node wasm/test/run.mjs
 
 DEST="$STAGING_DIR/$DIRNAME"
 mkdir -p "$DEST"
